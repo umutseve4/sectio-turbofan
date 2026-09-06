@@ -829,6 +829,8 @@ void main(){
     rows += row("çekirdek jet hızı", fmt(cyc.vc, 0) + " m/s");
     rows += row("baypas jet hızı", fmt(cyc.vb, 0) + " m/s");
     if(cyc.T4 > 1700) rows += row("T4 sınıra yakın", fmt(cyc.T4, 0) + " K", "warn");
+    rows += row("uçuş koşulu", "M 0.82 · 11 km · ISA");
+    rows += row("model", "öğretici — sertifikasyon verisi değil");
     $("#tbl").innerHTML = rows;
   }
 
