@@ -5,7 +5,8 @@ mesafe alanlarından (SDF) ray marching ile katı olarak çizilir. Kesme düzlem
 gezdirdiğinde kesit yüzeyi gerçekten hesaplanır — önceden çizilmiş bir görsel
 açılıp kapanmaz.
 
-Tek dosya, sıfır bağımlılık, sıfır ağ isteği: `index.html`.
+Tek dosya, sıfır bağımlılık: `index.html`. Uygulama kodu hiçbir harici kaynağa
+başvurmaz (CDN, font, analitik, `fetch`/XHR/WebSocket yok).
 
 > Depoda ekran görüntüsü yok, çünkü bu proje üzerinde çalışıldığı ortamda hiç GPU
 > yoktu; sahte bir önizleme koymak yerine dosyayı çift tıklamanı tercih ederim.
@@ -14,11 +15,11 @@ Tek dosya, sıfır bağımlılık, sıfır ağ isteği: `index.html`.
 
 | katman | ne yapar |
 |---|---|
-| geometri | 15 parça: nasel, çekirdek kaportası, spinner, 20 kanatlı fan, 3 kademe booster, 9 kademe HP kompresör, halka yanma odası, HP/LP türbin, iç içe iki mil, egzoz konisi, pilon, OGV |
+| geometri | 15 parça: nasel, çekirdek kaportası, spinner, 20 kanatlı fan, OGV, 3 kademe booster, rotor tamburu, 9 kademe HP kompresör, halka yanma odası, HP türbin, LP türbin, iç içe iki mil (LP + HP), egzoz konisi, pilon |
 | kesme düzlemi | X / Y / Z / serbest düzlem; yarım uzay ya da ayarlanabilir kalınlıkta dilim. Kesit yüzeyi ayrı gölgelendirilir (tarama + ısı parıltısı) |
 | termodinamik | gaz kolu N1'e bağlı basitleştirilmiş seyir Brayton çevrimi: OPR, T4, itki, TSFC, lüle hızları, N2 — hem panelde okunur hem de sıcaklık/basınç boyamasını besler |
 | okuma | imlecin altındaki parça 1×1 piksellik ayrı bir geçişle GPU'dan geri okunur; parça adı, istasyon sıcaklığı ve basıncı yazılır |
-| yedek | WebGL2 yoksa veya ekran dar ise **aynı mesafe alanından** JS ile piksel piksel çizilen 2B meridyen kesiti devreye girer |
+| yedek | WebGL2 yoksa veya ekran dar ise **aynı mesafe alanının JS portundan** piksel piksel çizilen 2B meridyen kesiti devreye girer |
 
 ## Kısayollar
 
@@ -42,9 +43,10 @@ Tek dosya, sıfır bağımlılık, sıfır ağ isteği: `index.html`.
 ## Doğruluk sınırı
 
 Çevrim modeli **öğretici seviyededir**: büyüklük mertebeleri ve eğilimler doğrudur,
-sertifikasyon verisi değildir. Kanat sayıları ve kademe sayıları yüksek baypaslı bir
-dar gövde motorunun mertebesinde seçilmiştir; belirli bir üreticinin belirli bir
-motoru modellenmemiştir.
+sertifikasyon verisi değildir. Uçuş koşulu M 0.82 · 11 km · ISA olarak sabittir, bu
+yüzden okunan itki bir *seyir* itkisidir; kalkış değeri değildir. Kanat ve kademe
+sayıları yüksek baypaslı bir dar gövde motorunun mertebesinde seçilmiştir; belirli
+bir üreticinin belirli bir motoru modellenmemiştir.
 
 ## Doğrulama
 
@@ -62,18 +64,19 @@ CI'da koşar (27 kontrol):
 - geometri: dolu olması gereken 7 nirengi noktasının dolu, boş olması gereken 4
   noktanın boş olması; baypas kanalının ve çekirdek gaz yolunun her istasyonda açık
   kalması; modelin ray marching sınırlarını taşmaması; mesafe alanının gradyan
-  büyüklüğünün 1'i aşmaması (küre izleme aşırı adım atmasın diye)
+  büyüklüğünün örneklenen noktalarda 1'i aşmaması (küre izleme aşırı adım atmasın diye)
 
 ```
 node verify.mjs
 ```
 
-Geometri ayrıca çevrimdışı olarak NumPy'de birebir yeniden yazılıp raymarch edilerek
+Geometri ayrıca çevrimdışı olarak NumPy'de yeniden yazılıp raymarch edilerek
 karşılaştırıldı; kanat sıralarını atlamak için kullanılan sınırlayıcı bantların
-geometriyi gerçekten kapsadığı 1,5 milyon örnek noktada ayrıca ölçüldü.
+geometriyi gerçekten kapsadığı 1,5 milyon örnek noktada ampirik olarak ölçüldü.
+Bu bir ispat değil, geniş bir örneklemdir.
 
-**Doğrulamanın kapsamadığı şey:** shader'ın gerçek bir GPU'da derlendiği, kare hızı
-ve 3B etiket yerleşimi. Bunlar ancak sen dosyayı açınca test edilir.
+**Doğrulamanın kapsamadığı şey:** shader'ın gerçek bir GPU'da derlendiği, kare hızı,
+seçim (pick) geçişi ve 3B etiket yerleşimi. Bunlar ancak sen dosyayı açınca test edilir.
 
 ## Çalıştırma
 
