@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="tr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SECTIO — Turbofan</title>
+<meta name="description" content="Bir turbofan motorunun canlı kesiti: mesafe alanlarıyla katı olarak çizilen, hareketli bir kesme düzlemiyle okunabilen tek dosyalık WebGL2 deneyi.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="SECTIO — Turbofan">
+<meta property="og:description" content="Kesme düzlemini gezdir, motorun içini oku. Tek dosya, bağımlılık yok.">
+<style>
+  :root{
+    --bg:#07080a; --ink:#e8e6e1; --dim:#8b8f96; --line:rgba(232,230,225,.16);
+    --hot:#ff6b3d; --cold:#5ad1ff; --acc:#f2c14e; --panel:rgba(10,11,13,.72);
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:"Helvetica Neue",Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
+    overflow:hidden;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  }
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  #grain{position:fixed;inset:0;pointer-events:none;opacity:.35;mix-blend-mode:overlay;
+    background-image:var(--grain);background-size:180px 180px}
+  .vig{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 45%,transparent 40%,rgba(0,0,0,.55) 100%)}
+  #ui{position:fixed;inset:0;pointer-events:none;opacity:1;transition:opacity .35s ease}
+  #ui[data-hidden="1"] .chrome{opacity:0}
+  #ui[data-hidden="2"] .chrome,#ui[data-hidden="2"] .labels{opacity:0}
+  .chrome,.labels{transition:opacity .4s ease}
+  #ui > *{pointer-events:none}
+  #ui button,#ui input,#ui select,#ui a,#panel,#readout{pointer-events:auto}
+
+  /* ---------- masthead ---------- */
+  header{position:absolute;top:0;left:0;right:0;padding:22px 26px;display:flex;
+    justify-content:space-between;align-items:flex-start;gap:24px}
+  h1{margin:0;font-size:13px;letter-spacing:.42em;text-transform:uppercase;font-weight:600}
+  h1 small{display:block;margin-top:8px;font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+    color:var(--dim);text-transform:none;font-weight:400;max-width:34ch;line-height:1.55}
+  .stamp{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--dim);text-align:right;line-height:1.8}
+  .stamp b{color:var(--ink);font-weight:500}
+  .rule{height:1px;background:var(--line);margin:10px 0}
+
+  /* ---------- transport bar ---------- */
+  #transport{position:absolute;top:22px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:10px;
+    letter-spacing:.14em;color:var(--dim);background:var(--panel);backdrop-filter:blur(9px);
+    border:1px solid var(--line);border-radius:2px;padding:8px 14px}
+  #transport b{color:var(--ink);font-weight:500}
+
+  /* ---------- panel ---------- */
+  #panel{position:absolute;left:26px;bottom:26px;width:288px;background:var(--panel);
+    backdrop-filter:blur(9px);border:1px solid var(--line);border-radius:2px;padding:16px 16px 14px}
+  .grp{margin-bottom:13px}
+  .grp:last-child{margin-bottom:0}
+  .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--dim);display:flex;justify-content:space-between;margin-bottom:7px}
+  .lbl b{color:var(--acc);font-weight:500}
+  .seg{display:flex;gap:4px;flex-wrap:wrap}
+  button{font:inherit;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--dim);
+    background:transparent;border:1px solid var(--line);border-radius:2px;padding:5px 8px;cursor:pointer;
+    transition:color .15s,border-color .15s,background .15s;text-transform:uppercase}
+  button:hover{color:var(--ink);border-color:rgba(232,230,225,.4)}
+  button[aria-pressed="true"],button.on{color:#07080a;background:var(--ink);border-color:var(--ink)}
+  button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:18px;background:transparent;cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:1px;background:var(--line)}
+  input[type=range]::-moz-range-track{height:1px;background:var(--line)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:9px;height:9px;border-radius:50%;
+    background:var(--ink);margin-top:-4px}
+  input[type=range]::-moz-range-thumb{width:9px;height:9px;border:0;border-radius:50%;background:var(--ink)}
+
+  /* ---------- readout ---------- */
+  #readout{position:absolute;right:26px;bottom:26px;width:306px;background:var(--panel);
+    backdrop-filter:blur(9px);border:1px solid var(--line);border-radius:2px;padding:16px}
+  #readout h2{margin:0 0 3px;font-size:11px;letter-spacing:.3em;text-transform:uppercase}
+  #hitname{color:var(--acc)}
+  #readout p{margin:0 0 11px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--dim)}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+  td{padding:3px 0;color:var(--dim);border-bottom:1px solid rgba(232,230,225,.07)}
+  td:last-child{text-align:right;color:var(--ink)}
+  tr:last-child td{border-bottom:0}
+  .warn{color:var(--hot)}
+
+  /* ---------- hint / help ---------- */
+  #hint{position:absolute;left:50%;bottom:26px;transform:translateX(-50%);text-align:center;
+    font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--dim);line-height:1.9;max-width:46ch}
+  #hint b{color:var(--ink);font-weight:500}
+  kbd{border:1px solid var(--line);border-radius:2px;padding:1px 5px;color:var(--ink);margin-right:3px}
+
+  /* ---------- 3d labels ---------- */
+  .labels{position:absolute;inset:0}
+  .pin{position:absolute;transform:translate(0,-50%);font-family:var(--mono);font-size:9.5px;
+    letter-spacing:.14em;color:var(--ink);white-space:nowrap;text-transform:uppercase;
+    opacity:0;transition:opacity .25s ease}
+  .pin i{display:inline-block;width:34px;height:1px;background:var(--line);
+    vertical-align:middle;margin-right:8px}
+  .pin.l{transform:translate(-100%,-50%)}
+  .pin em{font-style:normal;color:var(--dim);margin-left:8px}
+
+  /* ---------- overlays ---------- */
+  #boot{position:fixed;inset:0;display:grid;place-items:center;background:var(--bg);z-index:9;
+    transition:opacity .8s ease}
+  #boot .b{text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.3em;color:var(--dim)}
+  #boot .bar{width:200px;height:1px;background:var(--line);margin:16px auto 0;overflow:hidden}
+  #boot .bar i{display:block;height:100%;width:0;background:var(--ink);transition:width .4s ease}
+  #fallback{position:fixed;inset:0;background:var(--bg);z-index:8;display:none;padding:5vh 6vw;overflow:auto}
+  #fallback.on{display:block}
+  #fallback h2{font-size:12px;letter-spacing:.35em;text-transform:uppercase;margin:0 0 8px}
+  #fallback p{font-family:var(--mono);font-size:11px;line-height:1.8;color:var(--dim);max-width:62ch}
+  #fbcanvas{position:static;width:100%;height:auto;max-width:1100px;border:1px solid var(--line);margin-top:18px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  @media (max-width:1080px){
+    #ui{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{transition-duration:.001ms !important}
+  }
+</style>
+</head>
+<body>
+<canvas id="gl" aria-label="Turbofan motorunun etkileşimli kesiti"></canvas>
+<div class="vig"></div>
+<div id="grain"></div>
+
+<div id="ui" data-hidden="0">
+  <header class="chrome">
+    <div>
+      <h1>Sectio — Turbofan
+        <small>Yüksek baypaslı bir turbofan, resmi olarak değil katı olarak çizilir: her piksel, hacmin içinde bir ışın yürütülerek bulunur. Kesme düzlemini gezdir, motorun içini oku.</small>
+      </h1>
+    </div>
+    <div class="stamp">
+      <div>render · <b id="fps">—</b></div>
+      <div id="dims">—</div>
+      <div class="rule"></div>
+      <div>N1 <b id="sN1">—</b> · N2 <b id="sN2">—</b></div>
+      <div>OPR <b id="sOPR">—</b> · T4 <b id="sT4">—</b></div>
+    </div>
+  </header>
+
+  <div id="transport" class="chrome">
+    <button id="play" aria-pressed="true" title="Boşluk">durdur</button>
+    <span><b id="clock">0.0</b> s</span>
+    <span>·</span>
+    <span>kalite</span>
+    <button class="q" data-q="0">düşük</button>
+    <button class="q" data-q="1">orta</button>
+    <button class="q" data-q="2">yüksek</button>
+    <span>·</span>
+    <button id="reset" title="R">sıfırla</button>
+  </div>
+
+  <div class="labels" id="labels"></div>
+
+  <div id="panel" class="chrome">
+    <div class="grp">
+      <div class="lbl"><span>kesme düzlemi</span><b id="planeState">takip</b></div>
+      <div class="seg">
+        <button class="pl" data-p="0" aria-pressed="true">takip</button>
+        <button class="pl" data-p="1">X</button>
+        <button class="pl" data-p="2">Y</button>
+        <button class="pl" data-p="3">Z</button>
+        <button id="cut" aria-pressed="true" title="C">kes</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl"><span>derinlik</span><b id="vDepth">0.00</b></div>
+      <input id="depth" type="range" min="-1.4" max="1.4" step="0.005" value="0" aria-label="Kesme düzlemi derinliği">
+      <div class="lbl" style="margin-top:6px"><span>dilim</span><b id="vSlab">kapalı</b></div>
+      <input id="slab" type="range" min="0" max="1.4" step="0.01" value="0" aria-label="Dilim kalınlığı">
+    </div>
+    <div class="grp">
+      <div class="lbl"><span>boyama</span><b id="vStain">malzeme</b></div>
+      <div class="seg">
+        <button class="st" data-s="0" aria-pressed="true">malzeme</button>
+        <button class="st" data-s="1">sıcaklık</button>
+        <button class="st" data-s="2">basınç</button>
+        <button class="st" data-s="3">mil</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl"><span>gaz kolu · N1</span><b id="vN1">86%</b></div>
+      <input id="n1" type="range" min="55" max="102" step="0.5" value="86" aria-label="Gaz kolu, N1 yüzdesi">
+    </div>
+    <div class="grp">
+      <div class="lbl"><span>optik</span><b id="vOpt">katı</b></div>
+      <div class="seg">
+        <button id="optics" title="O">saydam</button>
+        <button id="freeze" title="F">dondur</button>
+        <button id="hide" title="H">gizle</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="readout" class="chrome" aria-live="polite">
+    <h2>kesit · <span id="hitname">—</span></h2>
+    <p id="hitdesc">Fareyi gezdir: düzlem onu takip eder. <b>⇧ basılı tut</b>, düzlem dursun ve ne kestiğini oku.</p>
+    <table>
+      <tbody id="tbl"></tbody>
+    </table>
+  </div>
+
+  <div id="hint" class="chrome">
+    sürükle: yörünge · tekerlek: yakınlaş · shift+sürükle: kaydır · alt+tekerlek: düzlemi it<br>
+    <kbd>X</kbd><kbd>Y</kbd><kbd>Z</kbd><kbd>V</kbd> düzlem · <kbd>C</kbd> kes · <kbd>⇧</kbd> tut ·
+    <kbd>F</kbd> dondur · <kbd>[</kbd><kbd>]</kbd> dilim · <kbd>O</kbd> optik · <kbd>H</kbd> gizle
+  </div>
+</div>
+
+<div id="boot"><div class="b"><div>SECTIO · TURBOFAN</div><div class="bar"><i id="bootbar"></i></div>
+  <div id="bootmsg" style="margin-top:14px">gölgelendirici derleniyor…</div></div></div>
+
+<div id="fallback">
+  <h2>Sectio — Turbofan</h2>
+  <p id="fbwhy">Motoru burada hacim olarak değil çizim olarak gösteriyorum. Aşağıdaki kesit,
+  üç boyutlu sahneyle <em>aynı</em> mesafe alanından hesaplandı; yalnızca ışın yürütmek yerine
+  meridyen düzleminde örneklendi.</p>
+  <canvas id="fbcanvas" width="1100" height="620" aria-label="Turbofan meridyen kesiti"></canvas>
+  <p id="fbnote" style="margin-top:14px"></p>
+</div>
+
+<p class="sr" id="srlive" aria-live="polite"></p>
+
+<script id="vs" type="x-shader/x-vertex">#version 300 es
+precision highp float;
+// three vertices, no buffers: gl_VertexID is enough for a fullscreen triangle
+void main(){
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+</script>
+
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+out vec4 outColor;
+
+uniform vec2  uRes;
+uniform vec3  uRo;
+uniform mat3  uCam;
+uniform float uFocal;
+uniform float uTime;
+uniform vec3  uPlaneN;
+uniform float uPlaneD;
+uniform float uSlab;
+uniform float uCut;
+uniform float uStain;
+uniform float uOptics;
+uniform float uPhaseLP;
+uniform float uPhaseHP;
+uniform float uSteps;
+uniform float uPick;
+uniform vec2  uPickPx;
+uniform float uT[8];
+uniform float uP[8];
+
+const float PI = 3.14159265359;
+
+float sdBox2(vec2 p, vec2 b, float r){
+  vec2 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+float sdBox3(vec3 p, vec3 b, float r){
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+}
+float sdSeg2(vec2 p, vec2 a, vec2 b, float r){
+  vec2 pa = p - a, ba = b - a;
+  float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+  return length(pa - ba * h) - r;
+}
+float smin(float a, float b, float k){
+  float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+  return mix(b, a, h) - k * h * (1.0 - h);
+}
+vec2 umin(vec2 a, vec2 b){ return a.x < b.x ? a : b; }
+
+// conservative bound of an annular band in meridional coords; used to skip
+// whole blade groups without breaking the sphere-tracing guarantee
+float band(vec2 v, float x0, float x1, float r0, float r1){
+  return sdBox2(v - vec2(0.5 * (x0 + x1), 0.5 * (r0 + r1)),
+                vec2(0.5 * (x1 - x0), 0.5 * (r1 - r0)), 0.0);
+}
+
+float bladeRow(vec3 p, float x0, float rin, float rout, float chord, float thick,
+               float count, float phase, float twist){
+  float c = cos(phase), s = sin(phase);
+  vec3 q = vec3(p.x, c * p.y - s * p.z, s * p.y + c * p.z);
+  float r = length(q.yz);
+  float a = atan(q.z, q.y);
+  float sector = 2.0 * PI / count;
+  a = mod(a + 0.5 * sector, sector) - 0.5 * sector;
+  float t = clamp((r - rin) / max(rout - rin, 1e-3), 0.0, 1.0);
+  float tw = mix(twist, twist * 0.25, t);
+  vec2 xt = vec2(q.x - x0, a * r);
+  float cs = cos(tw), sn = sin(tw);
+  xt = vec2(cs * xt.x - sn * xt.y, sn * xt.x + cs * xt.y);
+  vec3 b = vec3(xt.x, r - 0.5 * (rin + rout), xt.y);
+  return sdBox3(b, vec3(chord, 0.5 * (rout - rin), thick), 0.004) * 0.7;
+}
+
+vec2 map(vec3 p){
+  vec2 v = vec2(p.x, length(p.yz));
+  vec2 res = vec2(1e9, 0.0);
+
+  float cowl = sdSeg2(v, vec2(-1.28, 1.065), vec2(1.30, 1.145), 0.055);
+  cowl = smin(cowl, sdSeg2(v, vec2(1.30, 1.145), vec2(1.66, 1.055), 0.032), 0.07);
+  cowl = smin(cowl, sdSeg2(v, vec2(-1.31, 1.10), vec2(-1.24, 1.10), 0.075), 0.05);
+  res = umin(res, vec2(cowl, 1.0));
+
+  float core = sdSeg2(v, vec2(-0.46, 0.60), vec2(1.62, 0.665), 0.030);
+  core = smin(core, sdSeg2(v, vec2(1.62, 0.665), vec2(2.34, 0.44), 0.028), 0.06);
+  res = umin(res, vec2(core, 2.0));
+
+  float spin = sdSeg2(v, vec2(-1.10, 0.0), vec2(-0.64, 0.215), 0.052);
+  spin = smin(spin, sdSeg2(v, vec2(-0.64, 0.0), vec2(-0.30, 0.245), 0.095), 0.05);
+  res = umin(res, vec2(spin, 3.0));
+
+  float bFan = band(v, -0.927, -0.673, 0.223, 1.012);
+  if(bFan > 0.04) res = umin(res, vec2(bFan, 4.0));
+  else res = umin(res, vec2(bladeRow(p, -0.80, 0.235, 1.00, 0.085, 0.030, 20.0, uPhaseLP, 0.85), 4.0));
+
+  float bOgv = band(v, -0.529, -0.351, 0.653, 1.017);
+  if(bOgv > 0.04) res = umin(res, vec2(bOgv, 14.0));
+  else res = umin(res, vec2(bladeRow(p, -0.44, 0.665, 1.005, 0.055, 0.022, 32.0, 0.0, 0.18), 14.0));
+
+  float bdrum = sdSeg2(v, vec2(-0.52, 0.215), vec2(0.06, 0.235), 0.055);
+  res = umin(res, vec2(bdrum, 6.0));
+
+  float bBoost = band(v, -0.458, -0.042, 0.273, 0.557);
+  if(bBoost > 0.04) res = umin(res, vec2(bBoost, 5.0));
+  else for(int i = 0; i < 3; i++){
+    float x = -0.40 + 0.15 * float(i);
+    res = umin(res, vec2(bladeRow(p, x, 0.285, 0.545 - 0.02 * float(i), 0.030, 0.016, 34.0, uPhaseLP, 0.5), 5.0));
+  }
+
+  float hdrum = sdSeg2(v, vec2(0.04, 0.205), vec2(0.90, 0.300), 0.052);
+  res = umin(res, vec2(hdrum, 6.0));
+
+  float bHpc = band(v, 0.033, 0.927, 0.253, 0.482);
+  if(bHpc > 0.04) res = umin(res, vec2(bHpc, 7.0));
+  else for(int i = 0; i < 9; i++){
+    float t = float(i) / 8.0;
+    float x = 0.08 + 0.10 * float(i);
+    float rin = 0.265 + 0.062 * t;
+    float rout = 0.470 - 0.088 * t;
+    float ph = (mod(float(i), 2.0) < 0.5) ? uPhaseHP : 0.0;
+    res = umin(res, vec2(bladeRow(p, x, rin, rout, 0.024, 0.011, 42.0, ph, 0.42), 7.0));
+  }
+
+  // annular liner: open at both ends so the gas path runs HPC → liner → HPT
+  float outer = sdBox2(v - vec2(1.16, 0.425), vec2(0.175, 0.135), 0.060);
+  float inner = sdBox2(v - vec2(1.16, 0.435), vec2(0.200, 0.105), 0.045);
+  res = umin(res, vec2(max(outer, -inner), 8.0));
+
+  float bHpt = band(v, 1.335, 1.565, 0.288, 0.567);
+  if(bHpt > 0.04) res = umin(res, vec2(bHpt, 9.0));
+  else{
+    res = umin(res, vec2(bladeRow(p, 1.395, 0.300, 0.545, 0.032, 0.016, 46.0, uPhaseHP, 0.55), 9.0));
+    res = umin(res, vec2(bladeRow(p, 1.505, 0.300, 0.555, 0.030, 0.015, 52.0, uPhaseHP, -0.35), 9.0));
+  }
+
+  float bLpt = band(v, 1.649, 2.201, 0.288, 0.612);
+  if(bLpt > 0.04) res = umin(res, vec2(bLpt, 10.0));
+  else for(int i = 0; i < 4; i++){
+    float t = float(i) / 3.0;
+    float x = 1.70 + 0.15 * float(i);
+    res = umin(res, vec2(bladeRow(p, x, 0.300 + 0.020 * t, 0.545 + 0.055 * t, 0.026, 0.013, 58.0, uPhaseLP, 0.60), 10.0));
+  }
+  res = umin(res, vec2(sdSeg2(v, vec2(1.34, 0.255), vec2(2.26, 0.275), 0.046), 6.0));
+
+  res = umin(res, vec2(sdSeg2(v, vec2(-0.74, 0.0), vec2(2.55, 0.0), 0.055), 11.0));
+  res = umin(res, vec2(max(sdSeg2(v, vec2(0.02, 0.0), vec2(1.52, 0.0), 0.150),
+                          -sdSeg2(v, vec2(-0.10, 0.0), vec2(1.70, 0.0), 0.115)), 12.0));
+
+  res = umin(res, vec2(sdSeg2(v, vec2(2.34, 0.30), vec2(2.92, 0.0), 0.095), 15.0));
+
+  float py = sdBox3(p - vec3(0.55, 1.45, 0.0), vec3(0.62, 0.36, 0.045), 0.03);
+  res = umin(res, vec2(py, 13.0));
+
+  return res;
+}
+
+float planeCarve(vec3 p){
+  float h = dot(p, uPlaneN) - uPlaneD;
+  return uSlab > 0.001 ? (abs(h) - uSlab) : h;
+}
+vec2 mapCut(vec3 p){
+  vec2 m = map(p);
+  if(uCut > 0.5){
+    float c = planeCarve(p);
+    if(c > m.x) return vec2(c, 100.0 + m.y);
+    m.x = max(m.x, c);
+  }
+  return m;
+}
+vec3 calcNormal(vec3 p){
+  vec2 e = vec2(1.0, -1.0) * 0.0009;
+  return normalize(e.xyy * map(p + e.xyy).x + e.yyx * map(p + e.yyx).x +
+                   e.yxy * map(p + e.yxy).x + e.xxx * map(p + e.xxx).x);
+}
+float ao(vec3 p, vec3 n){
+  float o = 0.0, s = 1.0;
+  for(int i = 0; i < 5; i++){
+    float h = 0.012 + 0.055 * float(i);
+    o += (h - mapCut(p + n * h).x) * s;
+    s *= 0.72;
+  }
+  return clamp(1.0 - 1.6 * o, 0.0, 1.0);
+}
+
+float stationT(vec3 p){
+  vec2 v = vec2(p.x, length(p.yz));
+  if(v.y > 0.70) return uT[1];
+  float x = v.x;
+  if(x < -0.45) return uT[0];
+  if(x < 0.05)  return mix(uT[0], uT[2], (x + 0.45) / 0.50);
+  if(x < 0.95)  return mix(uT[2], uT[3], (x - 0.05) / 0.90);
+  if(x < 1.30)  return mix(uT[3], uT[4], smoothstep(0.0, 1.0, (x - 0.95) / 0.35));
+  if(x < 1.60)  return mix(uT[4], uT[5], (x - 1.30) / 0.30);
+  if(x < 2.30)  return mix(uT[5], uT[6], (x - 1.60) / 0.70);
+  return uT[6];
+}
+float stationP(vec3 p){
+  vec2 v = vec2(p.x, length(p.yz));
+  if(v.y > 0.70) return uP[1];
+  float x = v.x;
+  if(x < -0.45) return uP[0];
+  if(x < 0.05)  return mix(uP[0], uP[2], (x + 0.45) / 0.50);
+  if(x < 0.95)  return mix(uP[2], uP[3], (x - 0.05) / 0.90);
+  if(x < 1.35)  return mix(uP[3], uP[4], (x - 0.95) / 0.40);
+  if(x < 1.60)  return mix(uP[4], uP[5], (x - 1.35) / 0.25);
+  if(x < 2.30)  return mix(uP[5], uP[6], (x - 1.60) / 0.70);
+  return uP[6];
+}
+vec3 heat(float t){
+  vec3 a = vec3(0.10, 0.28, 0.55);
+  vec3 b = vec3(0.30, 0.72, 0.92);
+  vec3 c = vec3(0.98, 0.78, 0.28);
+  vec3 d = vec3(1.00, 0.36, 0.16);
+  vec3 e = vec3(1.00, 0.94, 0.86);
+  t = clamp(t, 0.0, 1.0);
+  if(t < 0.25) return mix(a, b, t / 0.25);
+  if(t < 0.55) return mix(b, c, (t - 0.25) / 0.30);
+  if(t < 0.82) return mix(c, d, (t - 0.55) / 0.27);
+  return mix(d, e, (t - 0.82) / 0.18);
+}
+vec3 material(float id, vec3 p){
+  if(uStain > 2.5){
+    if(id == 4.0 || id == 5.0 || id == 10.0 || id == 11.0 || id == 3.0) return vec3(0.36, 0.74, 0.95);
+    if(id == 7.0 || id == 9.0 || id == 12.0) return vec3(0.98, 0.55, 0.28);
+    if(id == 8.0) return vec3(0.95, 0.82, 0.40);
+    return vec3(0.40, 0.42, 0.45);
+  }
+  if(uStain > 1.5) return heat(clamp((stationP(p) - 20.0) / max(uP[3] * 1.05, 1.0), 0.0, 1.0));
+  if(uStain > 0.5) return heat(clamp((stationT(p) - 210.0) / max(uT[7] - 210.0, 1.0), 0.0, 1.0));
+  if(id == 1.0)  return vec3(0.20, 0.21, 0.23);
+  if(id == 2.0)  return vec3(0.26, 0.27, 0.29);
+  if(id == 3.0)  return vec3(0.55, 0.56, 0.58);
+  if(id == 4.0)  return vec3(0.62, 0.65, 0.70);
+  if(id == 5.0)  return vec3(0.58, 0.60, 0.64);
+  if(id == 6.0)  return vec3(0.44, 0.44, 0.46);
+  if(id == 7.0)  return vec3(0.72, 0.71, 0.66);
+  if(id == 8.0)  return vec3(0.78, 0.52, 0.30);
+  if(id == 9.0)  return vec3(0.85, 0.60, 0.34);
+  if(id == 10.0) return vec3(0.68, 0.62, 0.52);
+  if(id == 11.0) return vec3(0.50, 0.52, 0.56);
+  if(id == 12.0) return vec3(0.60, 0.50, 0.44);
+  if(id == 13.0) return vec3(0.18, 0.19, 0.21);
+  if(id == 14.0) return vec3(0.52, 0.55, 0.58);
+  return vec3(0.46, 0.47, 0.50);
+}
+float hatch(vec3 p){
+  float a = (p.x + p.y + p.z) * 46.0;
+  return smoothstep(0.42, 0.58, abs(fract(a) - 0.5));
+}
+
+vec3 shade(vec3 p, vec3 rd, float id){
+  bool isCut = id >= 99.0;
+  float mid = isCut ? id - 100.0 : id;
+  vec3 pn = normalize(uPlaneN);
+  vec3 n = isCut ? -pn * sign(dot(pn, rd)) : calcNormal(p);
+  vec3 base = material(mid, p);
+
+  vec3 key = normalize(vec3(0.55, 0.75, 0.42));
+  vec3 fil = normalize(vec3(-0.7, 0.15, -0.55));
+  float dif = max(dot(n, key), 0.0);
+  float fill = max(dot(n, fil), 0.0) * 0.35;
+  float rim = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
+  float occ = ao(p, n);
+
+  vec3 col = base * (0.16 + 0.95 * dif + fill) * occ;
+  col += vec3(0.42, 0.58, 0.78) * rim * 0.32 * occ;
+
+  vec3 h = normalize(key - rd);
+  float spec = pow(max(dot(n, h), 0.0), 46.0) * (isCut ? 0.05 : 0.45);
+  col += vec3(1.0, 0.96, 0.9) * spec * occ;
+
+  if(isCut){
+    col = base * 0.72 + 0.05;
+    col *= 0.78 + 0.22 * hatch(p);
+    if(uStain < 0.5){
+      float t = clamp((stationT(p) - uT[0]) / max(uT[7] - uT[0], 1.0), 0.0, 1.0);
+      col += heat(t) * t * t * 0.30;
+    }
+    col *= 0.55 + 0.45 * occ;
+    float f = clamp((p.x - 0.92) / 0.40, 0.0, 1.0);
+    if(p.x > 0.92 && p.x < 1.34 && length(p.yz) < 0.58) col += vec3(1.0, 0.42, 0.12) * f * 0.30;
+  }
+  return col;
+}
+
+void main(){
+  vec2 frag = uPick > 0.5 ? uPickPx : gl_FragCoord.xy;
+  vec2 uv = (frag * 2.0 - uRes) / uRes.y;
+  vec3 rd = normalize(uCam * vec3(uv, uFocal));
+  vec3 ro = uRo;
+
+  float t = 0.02, id = 0.0;
+  int N = int(uSteps);
+  for(int i = 0; i < 512; i++){
+    if(i >= N) break;
+    vec2 m = mapCut(ro + rd * t);
+    if(m.x < 0.0006 * t){ id = m.y; break; }
+    t += max(m.x * 0.85, 0.0009);
+    if(t > 22.0){ id = 0.0; break; }
+  }
+  vec3 pos = ro + rd * t;
+
+  if(uPick > 0.5){
+    float hit = id > 0.5 ? 1.0 : 0.0;
+    float raw = id >= 99.0 ? id - 100.0 : id;
+    outColor = vec4(clamp(raw / 24.0, 0.0, 1.0),
+                    clamp((pos.x + 1.6) / 4.8, 0.0, 1.0),
+                    clamp(length(pos.yz) / 1.8, 0.0, 1.0), hit);
+    return;
+  }
+
+  vec3 col;
+  if(id > 0.5){
+    col = shade(pos, rd, id);
+    if(uOptics > 0.5){
+      vec3 acc = col * 0.55;
+      float w = 0.45, tt = t;
+      for(int k = 0; k < 3; k++){
+        tt += 0.04;
+        float id2 = 0.0;
+        for(int i = 0; i < 220; i++){
+          if(i >= N) break;
+          vec2 m = mapCut(ro + rd * tt);
+          if(m.x < 0.0008 * tt){ id2 = m.y; break; }
+          tt += max(m.x * 0.85, 0.0012);
+          if(tt > 22.0) break;
+        }
+        if(id2 < 0.5) break;
+        acc += shade(ro + rd * tt, rd, id2) * w;
+        w *= 0.6;
+      }
+      col = acc;
+    }
+    float fog = 1.0 - exp(-0.020 * t * t);
+    col = mix(col, vec3(0.035, 0.040, 0.050), fog * 0.65);
+  }else{
+    float g = smoothstep(1.1, -0.6, uv.y);
+    col = mix(vec3(0.020, 0.023, 0.028), vec3(0.045, 0.050, 0.062), g);
+    col += vec3(0.05, 0.07, 0.10) * pow(max(0.0, 1.0 - length(uv * vec2(0.55, 1.0))), 3.0);
+  }
+
+  col = max(col, 0.0);
+  col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+  col = pow(col, vec3(0.4545));
+  col *= 1.0 - 0.28 * pow(length(uv * vec2(0.52, 0.62)), 2.2);
+  outColor = vec4(col, 1.0);
+}
+</script>
+
+<script>
+"use strict";
+(function(){
+  // ---------------------------------------------------------------- grain
+  (function(){
+    const c = document.createElement("canvas"); c.width = c.height = 180;
+    const g = c.getContext("2d"), d = g.createImageData(180, 180);
+    for(let i = 0; i < d.data.length; i += 4){
+      const v = 118 + Math.random() * 30;
+      d.data[i] = d.data[i+1] = d.data[i+2] = v; d.data[i+3] = 26;
+    }
+    g.putImageData(d, 0, 0);
+    document.documentElement.style.setProperty("--grain", "url(" + c.toDataURL() + ")");
+  })();
+
+  const $ = s => document.querySelector(s);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const canvas = $("#gl");
+  const boot = $("#boot"), bootbar = $("#bootbar"), bootmsg = $("#bootmsg");
+
+  // ------------------------------------------------------------ thermo model
+  // Simplified cruise station model of a high-bypass turbofan.
+  // Teaching-grade: correct shape and order of magnitude, not certification data.
+  const AMB = { T0: 218.8, p0: 23.84, M: 0.82, a: 296.5 };
+  const ENG = { bpr: 9.0, mdotMax: 240, cpc: 1005, cph: 1150, gc: 1.4, gh: 1.33, LHV: 43.1e6 };
+
+  function cycle(n1pct){
+    const n1 = n1pct / 100;
+    const M = AMB.M, T0 = AMB.T0, p0 = AMB.p0;
+    const ram = 1 + 0.2 * M * M;
+    const T2 = T0 * ram, p2 = p0 * Math.pow(ram, 3.5) * 0.995;
+    const fpr = 1 + 0.62 * Math.pow(n1, 2.0);
+    const bpr = ENG.bpr;
+    const epc = (ENG.gc - 1) / (ENG.gc * 0.90);
+    const T13 = T2 * Math.pow(fpr, epc), p13 = p2 * fpr;
+    const lpr = 1 + 0.55 * Math.pow(n1, 2.2);
+    const T25 = T13 * Math.pow(lpr, epc), p25 = p13 * lpr;
+    const hpr = 1 + 14 * Math.pow(n1, 2.2);
+    const T3 = T25 * Math.pow(hpr, epc), p3 = p25 * hpr;
+    const opr = p3 / p2;
+    const T4 = Math.min(1750, 900 + 720 * Math.pow(n1, 1.7));
+    const far = ENG.cph * (T4 - T3) / (ENG.LHV * 0.995 - ENG.cph * T4);
+    const dT_hpt = (ENG.cpc / ENG.cph) * (T3 - T25) / (1 + far);
+    const T45 = T4 - dT_hpt;
+    const dT_lpt = (ENG.cpc / ENG.cph) * ((T25 - T13) + (1 + bpr) * (T13 - T2)) / (1 + far);
+    const T5 = Math.max(T45 - dT_lpt, 480);
+    const eph = (ENG.gh - 1) / ENG.gh;
+    const p45 = p3 * Math.pow(T45 / T4, 1 / (eph * 0.90));
+    const p5 = Math.max(p45 * Math.pow(T5 / T45, 1 / (eph * 0.90)), p0 * 1.02);
+    const v0 = M * AMB.a;
+    const vc = Math.sqrt(Math.max(2 * ENG.cph * T5 * (1 - Math.pow(p0 / p5, eph)) * 0.98, 0));
+    const vb = Math.sqrt(Math.max(2 * ENG.cpc * T13 * (1 - Math.pow(p0 / p13, (ENG.gc - 1) / ENG.gc)) * 0.98, 0));
+    const mdot = ENG.mdotMax * Math.pow(n1, 1.35);
+    const mc = mdot / (1 + bpr), mb = mdot - mc;
+    const F = (mc * (1 + far) * vc - mc * v0) + mb * (vb - v0);
+    const wf = mc * far;
+    const tsfc = F > 1 ? wf * 3600 / (F / 9.80665) : 0;
+    const n2 = Math.min(105, 100 * Math.pow(Math.max(hpr, 1) / 15, 0.30) * 0.98);
+    return { n1: n1pct, n2, T2, p2, T13, p13, T25, p25, T3, p3, T4, T45, p45, T5, p5,
+             opr, far, F: F / 1000, tsfc, vc, vb, mdot, bpr };
+  }
+
+  const PARTS = {
+    1:  ["fan kaportası", "Kompozit nasel. İç yüzeyi baypas kanalının dış duvarıdır; itkinin büyük kısmı bu kanaldan çıkar."],
+    2:  ["çekirdek kaportası", "Sıcak çekirdeği baypas akışından ayırır ve akışı çekirdek lülesine kadar yönlendirir."],
+    3:  ["fan göbeği", "Spinner ve fan diski; kanat kök yüklerini LP miline aktarır."],
+    4:  ["fan kanadı", "Geniş kordonlu titanyum fan, 20 kanat. Havanın çoğunu hiç yakmadan hızlandırır."],
+    5:  ["booster kademesi", "LP kompresör. Göbekten geçen havayı çekirdek için ön-sıkıştırır."],
+    6:  ["rotor tamburu", "Kademeleri taşıyan dönen gövde; diskler buraya kenetlenir."],
+    7:  ["HP kompresör kanadı", "9 kademe. Yoğunluk arttıkça kanal daralır: aynı debi, küçülen kesit."],
+    8:  ["yanma odası", "Halka tipi. Yakıt burada eklenir; basınç neredeyse sabit, sıcaklık iki katına çıkar."],
+    9:  ["HP türbin", "Yanma gazından iş alır ve yalnızca HP kompresörü döndürür."],
+    10: ["LP türbin", "4 kademe. Fanı ve booster'ı döndürür; genişleme burada tamamlanır."],
+    11: ["LP mili", "Fan + booster + LP türbini bağlar. İçte kalan, yavaş ve yüksek torklu mil."],
+    12: ["HP mili", "HP kompresör ile HP türbini bağlayan içi boş dış mil; LP milinin etrafında döner."],
+    13: ["pilon", "Motoru kanada asar; yük yolu ve servis hatları buradan geçer."],
+    14: ["çıkış kılavuz kanadı", "Fan çıkışındaki dönmeyi düzleştirir; dönme enerjisi itkiye çevrilir."],
+    15: ["egzoz konisi", "Çekirdek lülesinin merkez gövdesi; akışı toparlar, dip sürüklemesini azaltır."]
+  };
+
+  const LABELS = [
+    { p: [-0.80, 1.02, 0.0], t: "fan", s: "20 kanat" },
+    { p: [-0.25, 0.56, 0.0], t: "booster", s: "3 kademe" },
+    { p: [ 0.50, 0.48, 0.0], t: "hp kompresör", s: "9 kademe" },
+    { p: [ 1.16, 0.62, 0.0], t: "yanma odası", s: "halka tipi" },
+    { p: [ 1.45, 0.62, 0.0], t: "hp türbin", s: "" },
+    { p: [ 1.95, 0.64, 0.0], t: "lp türbin", s: "4 kademe" },
+    { p: [ 0.60, 1.22, 0.0], t: "baypas kanalı", s: "BPR 9:1" }
+  ];
+
+  // ------------------------------------------------------------------ state
+  const S = {
+    yaw: -0.62, pitch: 0.24, dist: 5.4, target: [0.55, 0.0, 0.0],
+    planeMode: 0, planeD: 0.0, slab: 0.0, cut: true, stain: 0, optics: false,
+    hold: false, freeze: false, playing: !reduced, quality: 1, hidden: 0,
+    n1: 86, time: 0, mouse: [0.5, 0.5], phaseLP: 0, phaseHP: 0
+  };
+  const QUAL = [{ scale: 0.55, steps: 96 }, { scale: 0.8, steps: 132 }, { scale: 1.0, steps: 190 }];
+  if(navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) S.quality = 0;
+
+  // ------------------------------------------------------------------- webgl
+  let gl = null, prog = null, pickFbo = null, pickTex = null;
+  const U = {};
+  function compile(type, src, name){
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+      throw new Error(name + " derlenemedi: " + gl.getShaderInfoLog(sh));
+    return sh;
+  }
+  function initGL(){
+    gl = canvas.getContext("webgl2", { antialias: false, alpha: false, depth: false,
+      powerPreference: "high-performance", preserveDrawingBuffer: false });
+    if(!gl) throw new Error("Bu tarayıcıda WebGL2 bulunamadı.");
+    const vs = compile(gl.VERTEX_SHADER, $("#vs").textContent.trim(), "vertex");
+    const fs = compile(gl.FRAGMENT_SHADER, $("#fs").textContent.trim(), "fragment");
+    prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS))
+      throw new Error("Program bağlanamadı: " + gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    ["uRes","uRo","uCam","uFocal","uTime","uPlaneN","uPlaneD","uSlab","uCut","uStain",
+     "uOptics","uPhaseLP","uPhaseHP","uSteps","uPick","uPickPx"]
+      .forEach(n => U[n] = gl.getUniformLocation(prog, n));
+    U.uT = gl.getUniformLocation(prog, "uT[0]");
+    U.uP = gl.getUniformLocation(prog, "uP[0]");
+    gl.bindVertexArray(gl.createVertexArray());
+
+    pickTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, pickTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    pickFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, pickFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, pickTex, 0);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) pickFbo = null;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  // ------------------------------------------------------------------ camera
+  const FOCAL = 1.5;
+  function basis(){
+    const cy = Math.cos(S.yaw), sy = Math.sin(S.yaw);
+    const cp = Math.cos(S.pitch), sp = Math.sin(S.pitch);
+    const dir = [cp * sy, sp, cp * cy];
+    const ro = [S.target[0] + dir[0] * S.dist, S.target[1] + dir[1] * S.dist, S.target[2] + dir[2] * S.dist];
+    const f = [-dir[0], -dir[1], -dir[2]];
+    const up = [0, 1, 0];
+    let r = [f[1]*up[2] - f[2]*up[1], f[2]*up[0] - f[0]*up[2], f[0]*up[1] - f[1]*up[0]];
+    const rl = Math.hypot(r[0], r[1], r[2]) || 1;
+    r = [r[0]/rl, r[1]/rl, r[2]/rl];
+    const u = [r[1]*f[2] - r[2]*f[1], r[2]*f[0] - r[0]*f[2], r[0]*f[1] - r[1]*f[0]];
+    return { ro, m: [r[0],r[1],r[2], u[0],u[1],u[2], f[0],f[1],f[2]], r, u, f };
+  }
+  function project(pt, cam, W, H){
+    const d = [pt[0]-cam.ro[0], pt[1]-cam.ro[1], pt[2]-cam.ro[2]];
+    const x = d[0]*cam.r[0] + d[1]*cam.r[1] + d[2]*cam.r[2];
+    const y = d[0]*cam.u[0] + d[1]*cam.u[1] + d[2]*cam.u[2];
+    const z = d[0]*cam.f[0] + d[1]*cam.f[1] + d[2]*cam.f[2];
+    if(z <= 0.05) return null;
+    return [((x / z) * FOCAL * H + W) / 2, (H - (y / z) * FOCAL * H) / 2];
+  }
+
+  function planeVec(cam){
+    if(S.planeMode === 1) return [1, 0, 0];
+    if(S.planeMode === 2) return [0, 1, 0];
+    if(S.planeMode === 3) return [0, 0, 1];
+    const b = (S.mouse[1] - 0.5) * 1.1;
+    const n = [
+      cam.r[0]*Math.cos(b) + cam.u[0]*Math.sin(b),
+      cam.r[1]*Math.cos(b) + cam.u[1]*Math.sin(b),
+      cam.r[2]*Math.cos(b) + cam.u[2]*Math.sin(b)
+    ];
+    const l = Math.hypot(n[0], n[1], n[2]) || 1;
+    return [n[0]/l, n[1]/l, n[2]/l];
+  }
+  let heldN = [1, 0, 0], heldD = 0;
+
+  // ------------------------------------------------------------------ ui glue
+  const STAIN_NAMES = ["malzeme", "sıcaklık", "basınç", "mil"];
+  const PLANE_NAMES = ["takip", "X", "Y", "Z"];
+  function setPressed(sel, key, val){
+    document.querySelectorAll(sel).forEach(b =>
+      b.setAttribute("aria-pressed", String(Number(b.dataset[key]) === val)));
+  }
+  function syncUI(){
+    setPressed(".q", "q", S.quality);
+    setPressed(".pl", "p", S.planeMode);
+    setPressed(".st", "s", S.stain);
+    $("#cut").setAttribute("aria-pressed", String(S.cut));
+    $("#optics").setAttribute("aria-pressed", String(S.optics));
+    $("#freeze").setAttribute("aria-pressed", String(S.freeze));
+    $("#play").setAttribute("aria-pressed", String(S.playing));
+    $("#play").textContent = S.playing ? "durdur" : "oynat";
+    $("#vStain").textContent = STAIN_NAMES[S.stain];
+    $("#vDepth").textContent = S.planeD.toFixed(2);
+    $("#vSlab").textContent = S.slab < 0.005 ? "kapalı" : S.slab.toFixed(2);
+    $("#vOpt").textContent = S.optics ? "saydam" : "katı";
+    $("#vN1").textContent = S.n1.toFixed(0) + "%";
+    $("#ui").dataset.hidden = S.hidden;
+    planeState();
+  }
+  function planeState(){
+    $("#planeState").textContent = !S.cut ? "kapalı" : (S.hold ? "tutuldu" : PLANE_NAMES[S.planeMode]);
+  }
+
+  const fmt = (v, d) => Number(v).toFixed(d === undefined ? 1 : d);
+  let cyc = cycle(S.n1);
+  function refreshCycle(){
+    cyc = cycle(S.n1);
+    $("#sN1").textContent = fmt(cyc.n1, 0) + "%";
+    $("#sN2").textContent = fmt(cyc.n2, 0) + "%";
+    $("#sOPR").textContent = fmt(cyc.opr, 1) + ":1";
+    $("#sT4").textContent = fmt(cyc.T4, 0) + " K";
+  }
+  function stationAt(x, r){
+    if(r > 0.70) return { T: cyc.T13, p: cyc.p13, tag: "baypas kanalı" };
+    if(x < -0.45) return { T: cyc.T2, p: cyc.p2, tag: "giriş · st.2" };
+    if(x < 0.05)  return { T: cyc.T25, p: cyc.p25, tag: "booster çıkışı · st.2.5" };
+    if(x < 0.95)  return { T: cyc.T3, p: cyc.p3, tag: "HPC çıkışı · st.3" };
+    if(x < 1.35)  return { T: cyc.T4, p: cyc.p3 * 0.96, tag: "yanma odası çıkışı · st.4" };
+    if(x < 1.62)  return { T: cyc.T45, p: cyc.p45, tag: "HPT çıkışı · st.4.5" };
+    return { T: cyc.T5, p: cyc.p5, tag: "LPT çıkışı · st.5" };
+  }
+  const row = (a, b, cls) => "<tr><td" + (cls ? ' class="' + cls + '"' : "") + ">" + a +
+    "</td><td" + (cls ? ' class="' + cls + '"' : "") + ">" + b + "</td></tr>";
+
+  function renderReadout(hit){
+    let rows = "";
+    if(hit && PARTS[hit.id]){
+      const meta = PARTS[hit.id];
+      $("#hitname").textContent = meta[0];
+      $("#hitdesc").textContent = meta[1];
+      const st = stationAt(hit.x, hit.r);
+      rows += row("istasyon", st.tag);
+      rows += row("eksenel konum x", fmt(hit.x, 2) + " m");
+      rows += row("yarıçap r", fmt(hit.r, 2) + " m");
+      rows += row("toplam sıcaklık", fmt(st.T, 0) + " K · " + fmt(st.T - 273.15, 0) + " °C");
+      rows += row("toplam basınç", fmt(st.p, 0) + " kPa");
+    }else{
+      $("#hitname").textContent = "—";
+      $("#hitdesc").innerHTML = "Fareyi gezdir: düzlem onu takip eder. <b>⇧ basılı tut</b>, düzlem dursun ve ne kestiğini oku.";
+    }
+    rows += row("çevrim OPR", fmt(cyc.opr, 1) + ":1");
+    rows += row("baypas oranı", fmt(cyc.bpr, 1) + ":1");
+    rows += row("hava debisi", fmt(cyc.mdot, 0) + " kg/s");
+    rows += row("net itki (seyir)", fmt(cyc.F, 1) + " kN");
+    rows += row("TSFC", fmt(cyc.tsfc, 3) + " kg/kgf·h");
+    rows += row("çekirdek jet hızı", fmt(cyc.vc, 0) + " m/s");
+    rows += row("baypas jet hızı", fmt(cyc.vb, 0) + " m/s");
+    if(cyc.T4 > 1700) rows += row("T4 sınıra yakın", fmt(cyc.T4, 0) + " K", "warn");
+    $("#tbl").innerHTML = rows;
+  }
+
+  const labelEls = LABELS.map(l => {
+    const e = document.createElement("div");
+    e.className = "pin";
+    e.innerHTML = "<i></i>" + l.t + (l.s ? "<em>" + l.s + "</em>" : "");
+    $("#labels").appendChild(e);
+    return e;
+  });
+
+  // ------------------------------------------------------------------- input
+  let drag = null;
+  canvas.addEventListener("pointerdown", e => {
+    try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+    drag = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 1 };
+  });
+  addEventListener("pointerup", () => { drag = null; });
+  addEventListener("pointermove", e => {
+    S.mouse = [e.clientX / innerWidth, 1 - e.clientY / innerHeight];
+    if(!drag) return;
+    const dx = (e.clientX - drag.x) / innerWidth, dy = (e.clientY - drag.y) / innerHeight;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if(drag.pan){
+      const c = basis();
+      for(let i = 0; i < 3; i++) S.target[i] -= (c.r[i] * dx - c.u[i] * dy) * S.dist * 1.4;
+    }else{
+      S.yaw -= dx * 3.4;
+      S.pitch = Math.max(-1.35, Math.min(1.35, S.pitch + dy * 2.6));
+    }
+  });
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
+  canvas.addEventListener("wheel", e => {
+    e.preventDefault();
+    if(e.altKey){
+      S.planeD = Math.max(-1.4, Math.min(1.4, S.planeD + Math.sign(e.deltaY) * 0.03));
+      $("#depth").value = S.planeD;
+    }else{
+      S.dist = Math.max(1.6, Math.min(14, S.dist * Math.exp(Math.sign(e.deltaY) * 0.09)));
+    }
+    syncUI();
+  }, { passive: false });
+
+  addEventListener("keydown", e => {
+    if(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.key !== "Shift") return;
+    if(e.key === "Shift"){ S.hold = true; planeState(); return; }
+    const k = e.key.toLowerCase();
+    if(k === "x") S.planeMode = 1;
+    else if(k === "y") S.planeMode = 2;
+    else if(k === "z") S.planeMode = 3;
+    else if(k === "v") S.planeMode = 0;
+    else if(k === "c") S.cut = !S.cut;
+    else if(k === "f") S.freeze = !S.freeze;
+    else if(k === "o") S.optics = !S.optics;
+    else if(k === "h") S.hidden = (S.hidden + 1) % 3;
+    else if(k === "r") reset();
+    else if(k === "[") { S.slab = Math.max(0, S.slab - 0.05); $("#slab").value = S.slab; }
+    else if(k === "]") { S.slab = Math.min(1.4, S.slab + 0.05); $("#slab").value = S.slab; }
+    else if(k === "p") S.playing = !S.playing;
+    else if(e.code === "Space"){ S.playing = !S.playing; e.preventDefault(); }
+    else if(k === "1" || k === "2" || k === "3"){ S.quality = Number(k) - 1; resize(); }
+    else return;
+    syncUI();
+  });
+  addEventListener("keyup", e => { if(e.key === "Shift"){ S.hold = false; planeState(); } });
+
+  function reset(){
+    S.yaw = -0.62; S.pitch = 0.24; S.dist = 5.4; S.target = [0.55, 0, 0];
+    S.planeMode = 0; S.planeD = 0; S.slab = 0; S.cut = true; S.stain = 0; S.optics = false;
+    $("#depth").value = 0; $("#slab").value = 0;
+  }
+
+  document.querySelectorAll(".q").forEach(b => b.onclick = () => { S.quality = Number(b.dataset.q); resize(); syncUI(); });
+  document.querySelectorAll(".pl").forEach(b => b.onclick = () => { S.planeMode = Number(b.dataset.p); syncUI(); });
+  document.querySelectorAll(".st").forEach(b => b.onclick = () => { S.stain = Number(b.dataset.s); syncUI(); });
+  $("#cut").onclick = () => { S.cut = !S.cut; syncUI(); };
+  $("#optics").onclick = () => { S.optics = !S.optics; syncUI(); };
+  $("#freeze").onclick = () => { S.freeze = !S.freeze; syncUI(); };
+  $("#hide").onclick = () => { S.hidden = (S.hidden + 1) % 3; syncUI(); };
+  $("#play").onclick = () => { S.playing = !S.playing; syncUI(); };
+  $("#reset").onclick = () => { reset(); syncUI(); };
+  $("#depth").oninput = e => { S.planeD = Number(e.target.value); syncUI(); };
+  $("#slab").oninput = e => { S.slab = Number(e.target.value); syncUI(); };
+  $("#n1").oninput = e => { S.n1 = Number(e.target.value); refreshCycle(); renderReadout(lastHit); syncUI(); };
+
+  // ------------------------------------------------------------------- loop
+  let W = 1, H = 1;
+  function resize(){
+    const dpr = Math.min(devicePixelRatio || 1, 2) * QUAL[S.quality].scale;
+    W = Math.max(1, Math.floor(innerWidth * dpr));
+    H = Math.max(1, Math.floor(innerHeight * dpr));
+    canvas.width = W; canvas.height = H;
+    $("#dims").textContent = W + "×" + H + " · " + QUAL[S.quality].steps + " adım";
+  }
+  addEventListener("resize", resize);
+
+  let lastHit = null, frames = 0, fpsT = 0, prev = 0, pickCooldown = 0;
+  const pickBuf = new Uint8Array(4);
+
+  function frame(now){
+    const dt = Math.min((now - prev) / 1000, 0.05); prev = now;
+    if(S.playing && !S.freeze){
+      S.time += dt;
+      S.phaseLP += dt * (S.n1 / 100) * 3.4;
+      S.phaseHP -= dt * (cyc.n2 / 100) * 9.0;
+    }
+    const cam = basis();
+
+    let n = planeVec(cam), d = S.planeD;
+    if(S.planeMode === 0){
+      if(!S.hold){
+        d = S.planeD + (S.mouse[0] - 0.5) * 1.8;
+        heldN = n; heldD = d;
+      }else{
+        n = heldN; d = heldD;
+      }
+    }
+
+    gl.uniform2f(U.uRes, W, H);
+    gl.uniform3fv(U.uRo, cam.ro);
+    gl.uniformMatrix3fv(U.uCam, false, cam.m);
+    gl.uniform1f(U.uFocal, FOCAL);
+    gl.uniform1f(U.uTime, S.time);
+    gl.uniform3fv(U.uPlaneN, n);
+    gl.uniform1f(U.uPlaneD, d);
+    gl.uniform1f(U.uSlab, S.slab);
+    gl.uniform1f(U.uCut, S.cut ? 1 : 0);
+    gl.uniform1f(U.uStain, S.stain);
+    gl.uniform1f(U.uOptics, S.optics ? 1 : 0);
+    gl.uniform1f(U.uPhaseLP, S.phaseLP);
+    gl.uniform1f(U.uPhaseHP, S.phaseHP);
+    gl.uniform1f(U.uSteps, QUAL[S.quality].steps);
+    gl.uniform1fv(U.uT, new Float32Array([cyc.T2, cyc.T13, cyc.T25, cyc.T3, cyc.T4, cyc.T45, cyc.T5, 1800]));
+    gl.uniform1fv(U.uP, new Float32Array([cyc.p2, cyc.p13, cyc.p25, cyc.p3, cyc.p3 * 0.96, cyc.p45, cyc.p5, 1]));
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.uniform1f(U.uPick, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    pickCooldown -= dt;
+    if(pickFbo && pickCooldown <= 0){
+      pickCooldown = 0.1;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, pickFbo);
+      gl.viewport(0, 0, 1, 1);
+      gl.uniform1f(U.uPick, 1);
+      gl.uniform2f(U.uPickPx, S.mouse[0] * W, S.mouse[1] * H);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pickBuf);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const id = Math.round((pickBuf[0] / 255) * 24);
+      const hit = (pickBuf[3] > 127 && PARTS[id])
+        ? { id: id, x: (pickBuf[1] / 255) * 4.8 - 1.6, r: (pickBuf[2] / 255) * 1.8 } : null;
+      const changed = (!!hit !== !!lastHit) ||
+        (hit && lastHit && (hit.id !== lastHit.id || Math.abs(hit.x - lastHit.x) > 0.02));
+      lastHit = hit;
+      if(changed){
+        renderReadout(hit);
+        if(hit) $("#srlive").textContent = PARTS[hit.id][0];
+      }
+    }
+
+    const showLabels = S.hidden < 2 && S.dist < 9.5;
+    for(let i = 0; i < labelEls.length; i++){
+      const q = project(LABELS[i].p, cam, innerWidth, innerHeight);
+      const el = labelEls[i];
+      if(!q || !showLabels){ el.style.opacity = "0"; continue; }
+      const left = q[0] < innerWidth * 0.5;
+      el.classList.toggle("l", left);
+      el.style.left = (q[0] + (left ? -14 : 14)) + "px";
+      el.style.top = q[1] + "px";
+      el.style.opacity = "0.82";
+    }
+
+    frames++;
+    if(now - fpsT > 500){
+      $("#fps").textContent = Math.round(frames * 1000 / (now - fpsT)) + " fps";
+      frames = 0; fpsT = now;
+    }
+    $("#clock").textContent = S.time.toFixed(1);
+    requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------ 2d fallback
+  function sdSeg2(px, py, ax, ay, bx, by, r){
+    const pax = px - ax, pay = py - ay, bax = bx - ax, bay = by - ay;
+    const h = Math.max(0, Math.min(1, (pax * bax + pay * bay) / (bax * bax + bay * bay)));
+    return Math.hypot(pax - bax * h, pay - bay * h) - r;
+  }
+  function sdBox2(px, py, cx, cy, bx, by, r){
+    const qx = Math.abs(px - cx) - bx, qy = Math.abs(py - cy) - by;
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+  }
+  function meridional(x, r){
+    let best = 1e9, id = 0;
+    const put = (d, i) => { if(d < best){ best = d; id = i; } };
+    put(Math.min(sdSeg2(x, r, -1.28, 1.065, 1.30, 1.145, 0.055), sdSeg2(x, r, 1.30, 1.145, 1.66, 1.055, 0.032)), 1);
+    put(Math.min(sdSeg2(x, r, -0.46, 0.60, 1.62, 0.665, 0.030), sdSeg2(x, r, 1.62, 0.665, 2.34, 0.44, 0.028)), 2);
+    put(Math.min(sdSeg2(x, r, -1.10, 0, -0.64, 0.215, 0.052), sdSeg2(x, r, -0.64, 0, -0.30, 0.245, 0.095)), 3);
+    put(sdBox2(x, r, -0.80, 0.6175, 0.085, 0.3825, 0.02), 4);
+    put(sdBox2(x, r, -0.44, 0.835, 0.055, 0.17, 0.01), 14);
+    put(sdSeg2(x, r, -0.52, 0.215, 0.06, 0.235, 0.055), 6);
+    for(let i = 0; i < 3; i++) put(sdBox2(x, r, -0.40 + 0.15 * i, 0.415 - 0.01 * i, 0.030, 0.13 - 0.01 * i, 0.01), 5);
+    put(sdSeg2(x, r, 0.04, 0.205, 0.90, 0.300, 0.052), 6);
+    for(let i = 0; i < 9; i++){
+      const t = i / 8, rin = 0.265 + 0.062 * t, rout = 0.470 - 0.088 * t;
+      put(sdBox2(x, r, 0.08 + 0.10 * i, (rin + rout) / 2, 0.024, (rout - rin) / 2, 0.006), 7);
+    }
+    put(Math.max(sdBox2(x, r, 1.16, 0.425, 0.175, 0.135, 0.060),
+                -sdBox2(x, r, 1.16, 0.435, 0.200, 0.105, 0.045)), 8);
+    put(sdBox2(x, r, 1.395, 0.4225, 0.032, 0.1225, 0.01), 9);
+    put(sdBox2(x, r, 1.505, 0.4275, 0.030, 0.1275, 0.01), 9);
+    for(let i = 0; i < 4; i++){
+      const t = i / 3, rin = 0.300 + 0.020 * t, rout = 0.545 + 0.055 * t;
+      put(sdBox2(x, r, 1.70 + 0.15 * i, (rin + rout) / 2, 0.026, (rout - rin) / 2, 0.01), 10);
+    }
+    put(sdSeg2(x, r, 1.34, 0.255, 2.26, 0.275, 0.046), 6);
+    put(sdSeg2(x, r, -0.74, 0, 2.55, 0, 0.055), 11);
+    put(Math.max(sdSeg2(x, r, 0.02, 0, 1.52, 0, 0.150), -sdSeg2(x, r, -0.10, 0, 1.70, 0, 0.115)), 12);
+    put(sdSeg2(x, r, 2.34, 0.30, 2.92, 0, 0.095), 15);
+    return [best, id];
+  }
+  const FBCOL = { 1: 0x33363a, 2: 0x3f4245, 3: 0x8b8d90, 4: 0x9aa1a9, 5: 0x93979d, 6: 0x6d6e71,
+    7: 0xb5b2a8, 8: 0xc0844c, 9: 0xd4975a, 10: 0xa99b84, 11: 0x7f838a, 12: 0x96796b,
+    14: 0x84898d, 15: 0x3f4245 };
+  function drawFallback(){
+    const c = document.getElementById("fbcanvas"), g = c.getContext("2d");
+    const x0 = -1.6, x1 = 3.2, y0 = -1.5, y1 = 1.5;
+    const img = g.createImageData(c.width, c.height);
+    for(let j = 0; j < c.height; j++){
+      const yy = y1 - (j / c.height) * (y1 - y0);
+      for(let i = 0; i < c.width; i++){
+        const xx = x0 + (i / c.width) * (x1 - x0);
+        const res = meridional(xx, Math.abs(yy));
+        const k = (j * c.width + i) * 4;
+        let n = 0x07080a;
+        if(res[0] < 0) n = FBCOL[res[1]] !== undefined ? FBCOL[res[1]] : 0x55585c;
+        else if(res[0] < 0.006) n = 0xe8e6e1;
+        img.data[k] = (n >> 16) & 255; img.data[k+1] = (n >> 8) & 255;
+        img.data[k+2] = n & 255; img.data[k+3] = 255;
+      }
+    }
+    g.putImageData(img, 0, 0);
+    g.strokeStyle = "rgba(232,230,225,.22)"; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, c.height / 2); g.lineTo(c.width, c.height / 2); g.stroke();
+    g.font = "10px ui-monospace, monospace"; g.fillStyle = "#e8e6e1";
+    const px = x => ((x - x0) / (x1 - x0)) * c.width, py = y => ((y1 - y) / (y1 - y0)) * c.height;
+    [["fan", -0.80, 1.06], ["baypas", 0.40, 0.92], ["hpc", 0.50, 0.54], ["yanma", 1.16, 0.62],
+     ["hpt", 1.45, 0.60], ["lpt", 1.95, 0.68], ["lüle", 2.55, 0.36]].forEach(l => {
+      g.fillText(l[0].toUpperCase(), px(l[1]) - 8, py(l[2]) - 6);
+    });
+  }
+  function fallback(msg){
+    document.getElementById("fallback").classList.add("on");
+    canvas.style.display = "none";
+    $("#ui").style.display = "none";
+    boot.style.display = "none";
+    $("#fbnote").textContent = msg || "";
+    try { drawFallback(); } catch(err){ console.error(err); }
+  }
+
+  // ------------------------------------------------------------------- boot
+  function step(pct, msg){ bootbar.style.width = pct + "%"; if(msg) bootmsg.textContent = msg; }
+  const smallScreen = matchMedia("(max-width:1080px)").matches;
+  if(smallScreen){
+    fallback("Bu deneyim her karede hacmin içinden milyonlarca mesafe örneği alır; telefon GPU'ları bunu ancak ısınarak yapar. Masaüstünde aç.");
+  }else{
+    try{
+      step(20, "bağlam açılıyor…");
+      initGL();
+      step(70, "gölgelendirici bağlandı");
+      resize(); refreshCycle(); renderReadout(null); syncUI();
+      step(100, "hazır");
+      requestAnimationFrame(t => { prev = t; fpsT = t; frame(t); });
+      setTimeout(() => {
+        boot.style.opacity = "0";
+        setTimeout(() => { boot.style.display = "none"; }, 800);
+      }, 260);
+    }catch(err){
+      console.error(err);
+      fallback(String((err && err.message) || err));
+    }
+  }
+
+  window.__SECTIO__ = { cycle: cycle, meridional: meridional, PARTS: PARTS, state: S };
+})();
+</script>
+</body>
+</html>
