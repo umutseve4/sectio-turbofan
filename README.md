@@ -7,7 +7,8 @@ açılıp kapanmaz.
 
 Tek dosya, sıfır bağımlılık, sıfır ağ isteği: `index.html`.
 
-![kesit](docs/hero.png)
+> Depoda ekran görüntüsü yok, çünkü bu proje üzerinde çalışıldığı ortamda hiç GPU
+> yoktu; sahte bir önizleme koymak yerine dosyayı çift tıklamanı tercih ederim.
 
 ## Ne var içinde
 
@@ -70,6 +71,9 @@ node verify.mjs
 Geometri ayrıca çevrimdışı olarak NumPy'de birebir yeniden yazılıp raymarch edilerek
 karşılaştırıldı; kanat sıralarını atlamak için kullanılan sınırlayıcı bantların
 geometriyi gerçekten kapsadığı 1,5 milyon örnek noktada ayrıca ölçüldü.
+
+**Doğrulamanın kapsamadığı şey:** shader'ın gerçek bir GPU'da derlendiği, kare hızı
+ve 3B etiket yerleşimi. Bunlar ancak sen dosyayı açınca test edilir.
 
 ## Çalıştırma
 
