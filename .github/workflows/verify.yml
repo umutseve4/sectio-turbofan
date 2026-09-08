@@ -20,12 +20,12 @@ jobs:
         run: node verify.mjs
 
       # README bir kontrol sayisi yayinliyor. Elle yazilmis bir sayi
-      # sessizce bayatlar, o yuzden gercekten kosan kontrolleri sayip
-      # yaziyoruz.
-      - name: kac kontrol kostu
+      # sessizce bayatlar (bir kez bayatladi da: 27 yaziyordu, 29 kosuyordu),
+      # o yuzden gercekten kosan kontrolleri sayip README ile karsilastiriyoruz.
+      - name: README'deki kontrol sayisi dogru mu
         run: |
-          set -u
-          node verify.mjs > /tmp/verify.log 2>&1 || true
+          set -eu
+          node verify.mjs > /tmp/verify.log 2>&1
           ok=$(grep -c '^  ok ' /tmp/verify.log || true)
           fail=$(grep -c '^  FAIL ' /tmp/verify.log || true)
           total=$(( ok + fail ))
@@ -37,3 +37,24 @@ jobs:
             echo "- kalan: **$fail**"
             echo "- toplam: **$total**"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "verify.mjs $fail kontrolde kaldi" >&2
+            exit 1
+          fi
+
+          miss=0
+          grep -qF "kontrol%C3%BC-$total-" README.md || {
+            echo "rozet $total demiyor" >&2; miss=1;
+          }
+          grep -qF "**$total kontrol**" README.md || {
+            echo "metin '**$total kontrol**' demiyor" >&2; miss=1;
+          }
+          grep -qF "Yukarıdaki $total kontrol" README.md || {
+            echo "Sinirlar bolumu $total demiyor" >&2; miss=1;
+          }
+          if [ "$miss" -ne 0 ]; then
+            echo "::error title=README bayat::CI $total kontrol sayiyor, README baska bir sayi yaziyor."
+            exit 1
+          fi
+          echo "README ile CI ayni sayida: $total"
