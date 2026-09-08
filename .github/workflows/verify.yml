@@ -14,7 +14,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: node sürümü
+      - name: node surumu
         run: node --version
-      - name: çevrimdışı doğrulama
+      - name: cevrimdisi dogrulama
         run: node verify.mjs
+
+      # README bir kontrol sayisi yayinliyor. Elle yazilmis bir sayi
+      # sessizce bayatlar, o yuzden gercekten kosan kontrolleri sayip
+      # yaziyoruz.
+      - name: kac kontrol kostu
+        run: |
+          set -u
+          node verify.mjs > /tmp/verify.log 2>&1 || true
+          ok=$(grep -c '^  ok ' /tmp/verify.log || true)
+          fail=$(grep -c '^  FAIL ' /tmp/verify.log || true)
+          total=$(( ok + fail ))
+          echo "::notice title=kontrol sayisi::ok=$ok fail=$fail total=$total"
+          {
+            echo "## Kontrol sayimi"
+            echo ""
+            echo "- gecen: **$ok**"
+            echo "- kalan: **$fail**"
+            echo "- toplam: **$total**"
+          } >> "$GITHUB_STEP_SUMMARY"
